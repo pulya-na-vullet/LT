@@ -1,35 +1,22 @@
 # НТ пререквизиты — пакет ncins
 
-Актуализировано **21 июля 2026** по финальному BPMN из PR (NCINS, commits 1–7) + ответы СА/бэкенд.
+Актуализировано по коду **develop** `ump-ncins-pa@4a921a1653e` (воркеры + IT + BPMN).
 
-## Excel (основной артефакт для НТ)
+## Download
+- Excel: [`nt-prerequisites-ncins-xlsx.zip`](../nt-prerequisites-ncins-xlsx.zip)
+- Исходник: [`ump-ncins-pa-develop@4a921a1653e (1).zip`](../ump-ncins-pa-develop@4a921a1653e%20(1).zip)
 
-Скачать zip: [`nt-prerequisites-ncins-xlsx.zip`](../nt-prerequisites-ncins-xlsx.zip)
+## JobWorker → HTTP (из кода)
 
-Папка: [`nt-prerequisites-xlsx/`](../nt-prerequisites-xlsx/)
+| JobWorker type | Класс | HTTP / поведение |
+|---|---|---|
+| `get-application-data` | ApplicationDataWorker | `GET /applications/{id}?include=PARTICIPANT&include=PRODUCT` |
+| `...get-report-data` | PrepareDataForPrintFormWorker | локально XML→Base64 |
+| `update-product` | ProductDataUpdateWorker | `PUT /products/{id}` (policyLink=acId) |
+| `...set-hold` / `...create-payment` | InsurancePaymentWorker | **STUB** `{code:SUCCESS}` |
+| `...create-contract` | FinalisationWorker | `POST /v1/ins-contracts` |
+| `...delete-documents` | DeleteDocumentsWorker | **STUB** `{status:"1"}` |
 
-Структура каждого файла = образец `ump-onboarding-pa`:
+Внешние connectors (не в этом сервисе): `ea-send-documents.v1`, `transfer-control.v1`.
 
-1. Согласование  
-2. Минимальная информация (пререквизиты 1–6)  
-3. Полная информация (пререквизиты 6–12)  
-4. BPMN методы (источник) — STATIC/DYNAMIC
-
-| Файл | Процесс |
-|---|---|
-| `... ump-main-ma-ncins-pa.xlsx` | Оркестратор |
-| `... ump-prepare-documents-ncins-pa.xlsx` | Подготовка документов |
-| `... ump-signing-documents-ncins-pa.xlsx` | Подписание (PT25M) |
-| `... ump-payment-ncins-pa.xlsx` | Оплата (PT5M) |
-| `... ump-finalisation-ncins-pa.xlsx` | Финализация (3× parallel EA) |
-| `... ump-delete-documents-ncins-pa.xlsx` | Удаление (multiInstance) |
-
-## Ключевые правки по BPMN PR
-
-- Signing/Payment **correlationKey** = `businessKey + "." + "NON_CREDIT_INSURANCE"`
-- Timers: signing **PT25M**, payment **PT5M**, main **PT30M**
-- Finalisation: **3×** `ea-send-documents.v1` (agreement/policy/contract), `stopInIncident=false`
-- Delete: BPMN id `ump-delete-documents-ncins-pa`, `processType=DELETE_DOCS`, multiInstance `documents`
-- Main на timeout: Call Activity delete → BANK_REJECT
-
-Markdown-копии в этой папке — краткие шпаргалки; для заполнения НТ использовать Excel.
+**BPMN `ump-main-ma-ncins-pa` в develop отсутствует.** Payment timer в develop BPMN = **PT15M**.
