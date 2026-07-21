@@ -1,90 +1,29 @@
 # НТ пререквизиты :: Worker ump-signing-documents-ncins-pa
 
-**UMP** · 21 июля 2026
+**UMP** · 21 июля 2026 · актуализировано по BPMN PR (NCINS)
 
-## 1. Согласование
+## Ключевые факты BPMN
 
-| Аналитик | Согласование |
+- Timer: **PT25M**
+- Message: `SigningDocs`
+- **correlationKey** = `businessKey + "." + "NON_CREDIT_INSURANCE"`
+- Transfer: `ump-process-transfer-connector` → `ump.process.to.system` (`systemCode=B2B`, `messageName=GenerateDocs`, `stopInIncident=true`)
+- Stage: `SIGN_WAITING`
+- После сообщения: `update-product`
+- Delete **не** в signing — cleanup в main по `timeoutMessage`
+
+## Пререквизиты 1–12
+
+| # | Значение (кратко) |
 |---|---|
-| TBD | TBD |
-
----
-
-## 2. Минимальная информация для определения необходимости проведения НТ
-
-| # | Пререквизит | Значение | Пример | Где взять | Роль |
-|---|---|---|---|---|---|
-| 1 | Описание алгоритма работы тестируемого метода | `[ump-signing-documents-ncins-pa] Подписание документов` | Start → Get data → Kafka «передать управление» → Stage ожидание → Receive completion → Update product → End (+ timer sub-process) | Confluence / BPMN | Разработчик |
-| 2 | SLA по времени отклика | Sync: несколько секунд. Async прод: до 25 мин; для НТ сократить | Ориентир бэкенда для НТ: несколько секунд, ≤ ~3 сек (уточнить с НТ) | СА / бэкенд / НТ | Аналитик |
-| 3 | Частота планируемой нагрузки (ЧПН) | ~89/час среднее, пик ~180/час | 15000 заявок/мес | Расчёт | Аналитик |
-| 4 | Прогнозируемая через полгода ЧПН | TBD | — | Аналитик | Аналитик |
-| 5 | ЧПН на вызываемые методы | См. таблицу ниже | — | Аналитик | Аналитик |
-| 6 | Прогнозируемая через полгода ЧПН на зависимости | TBD | — | Аналитик | Аналитик |
-
-### 2.5 ЧПН на зависимости
-
-| Сервис / метод / топик | ЧПН | Комментарий |
-|---|---|---|
-| `GET /applications/{id}` | ~89–180/час | Данные заявки |
-| Kafka `ump.process.to.system` | ~89–180/час | Передача управления на подписание |
-| Kafka product-stage connector | ~89–180/час | Стадия ожидания подписания |
-| Kafka `ump.process.from.system` | ~89–180/час | Completion (на НТ подкладываем) |
-| `PUT /products/{id}` | ~89–180/час | После успешного подписания |
-
-| Топик | Ссылка |
-|---|---|
-| `ump.process.to.system` | https://confluence.moscow.alfaintra.net/spaces/SMP/pages/3108706956/ump.process.to.system |
-| `ump.process.from.system` | https://confluence.moscow.alfaintra.net/spaces/SMP/pages/3344336898/ump.process.from.system |
-
----
-
-## 3. Полная информация для проведения НТ
-
-| # | Пререквизит | Значение | Пример | Где взять | Роль |
-|---|---|---|---|---|---|
-| 6 | Пример кода вызова | Старт из main Call Activity. Подписание моковое — live JSON примеров сообщений пока нет | `businessKey`, `productCode` | Confluence / аналитика | Тестировщик |
-| 7 | Примеры кода ответа | Success → оплата. Timeout → `BANK_REJECT` | `result=SUCCESS` / status `BANK_REJECT` | СА / бэкенд | Разработчик |
-| 8 | Изменяемые данные | Стадия продукта через Kafka; продукт через PUT | Дублей сообщений по бизнес-логике быть не должно | Документация | Разработчик |
-| 9 | Скрипт миграции БД | Нет необходимости | — | — | Разработчик |
-| 10 | Заглушки внешних зависимостей | HTTP signing-канал не мокается. На НТ подкладываем completion в Kafka | Сейчас вручную; автоматизацию согласовать с НТ | Бэкенд / НТ | Разработчик |
-| 11 | Ожидаемое время отклика замоканных зависимостей | Для НТ async wait: несколько секунд, ≤ ~3 сек | Не симулируем реальные 1–25 минут | Бэкенд | Разработчик |
-| 12 | Сценарий тестирования | См. таблицы ниже | — | Аналитик | Аналитик |
-
-### Входные параметры
-
-| Параметр | Тип | Обяз. | Пример |
-|---|---|---|---|
-| businessKey | UUID | Да | `fb46257-8166-4a5e-8f0b-df608ffa068b` |
-| productCode | STRING | Да | `NON_CREDIT_INSURANCE` |
-
-### Обработка нештатных сообщений
-
-| Кейс | Поведение |
-|---|---|
-| Late message | Ничего не делаем |
-| Дубликаты | По задумке быть не должно |
-| Битый payload | TBD (нужен контракт от аналитики) |
-
-### Переходы и expected статусы
-
-| Сценарий | Условие | Переход | Expected статус / результат |
-|---|---|---|---|
-| Обычная ветка | Пришло completion message | Следующий процесс — Оплата (`ump-payment-ncins-pa`) | `result=SUCCESS`, далее payment |
-| Таймаутная ветка | Нет сообщения до таймера | Delete documents (мок AC) → завершение инстанса | `BANK_REJECT` |
-
-### Сценарии НТ
-
-| # | Сценарий | Ожидаемый результат |
-|---|---|---|
-| 1 | Success | get → publish to.system → stage waiting → **подложить** from.system → update product → SUCCESS → main в оплату |
-| 2 | Timeout | не публиковать completion → timer → delete → `BANK_REJECT` |
-| 3 | Нагрузка message flow | до ~180 msg/час на исходящий и входящий топики в пике |
-
-### Открытые пункты
-
-| # | Пункт | Статус |
-|---|---|---|
-| 1 | Финальные JSON-примеры / schema сообщений | TBD (ожидаем аналитику) |
-| 2 | Автоматизация publish completion в Kafka на НТ | TBD |
-| 3 | Точный SLA async wait для НТ (≤3 сек?) | TBD |
-| 4 | Поведение на битый payload | TBD |
+| 1 | get → to.system → SIGN_WAITING → Receive SigningDocs → update-product; EventSubProcess PT25M → BANK_REJECT |
+| 2 | Sync несколько сек; async на НТ ≤~3 сек (прод до PT25M) |
+| 3 | ~89 / пик ~180 в час |
+| 4–6 | TBD / зависимости = get, to.system, stage, from.system, update-product |
+| 6 (full) | Publish SigningDocs с corr=`<bk>.NON_CREDIT_INSURANCE` |
+| 7 | SUCCESS → оплата; timeout → BANK_REJECT (+ main delete) |
+| 8 | SIGN_WAITING + agreementLink |
+| 9 | Нет миграции |
+| 10 | Kafka completion подкладываем |
+| 11 | ≤~3 сек на НТ |
+| 12 | Success + timeout + late-message ignore |

@@ -1,6 +1,6 @@
 # НТ пререквизиты :: Worker ump-main-ma-ncins-pa
 
-**UMP** · 21 июля 2026
+**UMP** · 21 июля 2026 · актуализировано по BPMN PR (NCINS)
 
 ## 1. Согласование
 
@@ -14,34 +14,12 @@
 
 | # | Пререквизит | Значение | Пример | Где взять | Роль |
 |---|---|---|---|---|---|
-| 1 | Описание алгоритма работы тестируемого метода | `[ump-main-ma-ncins-pa] Управление процессом мультизаявки по некредитному страхованию` | Схема BPMN: `ump-main-ma-ncins-pa.bpmn`. Оркестратор: prepare → signing → payment → finalisation; при таймаутах → delete + `BANK_REJECT` | Confluence / BPMN / архив LT | Разработчик |
-| 2 | SLA по времени отклика | TBD (встреча с НТ) | Ориентир СА: sync-шаги дочерних — несколько секунд на вызов | Заказчик / встреча с НТ | Аналитик |
-| 3 | Частота планируемой нагрузки (ЧПН) | ~89 заявок/час (среднее), пик ~180/час | База: 15000 заявок/мес, рабочие часы, канал SFA (ЮЛ) | Расчёт от 15000/мес | Аналитик |
-| 4 | Прогнозируемая через полгода ЧПН | TBD | Сейчас зафиксирована только текущая база 15000/мес | Аналитик / заказчик | Аналитик |
-| 5 | ЧПН на вызываемые внутри методы | См. таблицу ниже | — | Аналитик | Аналитик |
-| 6 | Прогнозируемая через полгода ЧПН на зависимости | TBD | Пропорционально п.4 | Аналитик | Аналитик |
-
-### 2.5 ЧПН на вызываемые процессы / коннекторы
-
-| Сервис / процесс / коннектор | ЧПН | Комментарий |
-|---|---|---|
-| `[ump-prepare-documents-ncins-pa]` | ~89/час (пик ~180) | Все успешные заявки |
-| `[ump-signing-documents-ncins-pa]` | ~89/час (пик ~180) | Все успешные заявки |
-| `[ump-payment-ncins-pa]` | ~85/час (пик ~170) | ~95% заявок (без signing-timeout) |
-| `[ump-finalisation-ncins-pa]` | ~85/час (пик ~170) | После успешной оплаты |
-| `[ump-delete-documents-ncins-pa]` | ~4–5/час | ~5% таймаут-веток |
-| Kafka `ump.process.to.system` / `from.system` | до 1800 сообщений/день | Подписание + оплата |
-| Kafka product-stage / status connectors | ~89–180/час | По шагам main |
-
-### Профиль веток
-
-| Ветка | Доля | Комментарий |
-|---|---|---|
-| Normal (до COMPLETED) | ~95% | Happy-path |
-| Timeout / reject | ~5% | Оценка сверху |
-| └─ signing timeout (25 мин) | ~95% от timeout | Основной реалистичный таймаут |
-| └─ payment timeout (5 мин) | малая доля | Оплата почти мгновенная |
-| └─ main timeout (30 мин) | аварийный | По требованию UMP |
+| 1 | Описание алгоритма работы тестируемого метода | `[ump-main-ma-ncins-pa]` оркестратор: prepare → stage DOCS_COMPLETED → signing → XOR(TIMEOUT→delete+BANK_REJECT / SIGN_COMPLETED) → payment → XOR(TIMEOUT→delete / PAYMENT_COMPLETED) → finalisation → COMPLETED → SUCCESS. Event SubProcess **PT30M** → Call Activity `ump-delete-documents-ncins-pa` → BANK_REJECT | BPMN `ump-main-ma-ncins-pa.bpmn` | Confluence / BPMN PR | Разработчик |
+| 2 | SLA по времени отклика | E2E SLA main TBD с НТ. Sync дочерних: несколько секунд. Таймеры: signing PT25M, payment PT5M, main PT30M | TBD числом | Заказчик / НТ | Аналитик |
+| 3 | Частота планируемой нагрузки (ЧПН) | ~89/час среднее, пик ~180/час; ~95% happy / ~5% timeout | 15000 заявок/мес SFA | Расчёт | Аналитик |
+| 4 | Прогнозируемая через полгода ЧПН | TBD | — | Аналитик | Аналитик |
+| 5 | ЧПН на вызываемые внутри методы | prepare/signing ~89–180; payment/finalisation ~85–170; delete ~4–5; kafka stages ~89–180; kafka status reject ~4–5 | — | Аналитик | Аналитик |
+| 6 | Прогнозируемая через полгода ЧПН на зависимости | TBD | — | Аналитик | Аналитик |
 
 ---
 
@@ -49,45 +27,10 @@
 
 | # | Пререквизит | Значение | Пример | Где взять | Роль |
 |---|---|---|---|---|---|
-| 6 | Пример кода вызова тестируемого метода | У воркера нет HTTP-эндпоинта. Запуск через Camunda/Zeebe Client API | `businessKey` + `productCode=NON_CREDIT_INSURANCE` | Confluence start event | Тестировщик |
-| 7 | Примеры кода ответа | End: `result=SUCCESS`. Timer: `statusCode=BANK_REJECT` | `statusMessage=Превышено время ожидания`, `forcefullyTerminate=true` | Документация процесса | Разработчик |
-| 8 | Изменяемые данные | Main в UMP-БД сущности напрямую не меняет; стадии/статусы — через Kafka-коннекторы | stage: DOCS_COMPLETED → SIGN_COMPLETED → PAYMENT_COMPLETED → COMPLETED | Описание процесса | Разработчик |
+| 6 | Пример кода вызова | Zeebe create instance: `businessKey` + `productCode=NON_CREDIT_INSURANCE` | bpmnProcessId `ump-main-ma-ncins-pa` | BPMN | Тестировщик |
+| 7 | Примеры кода ответа | End `result=SUCCESS`; reject `BANK_REJECT` + `forcefullyTerminate=true` | SUCCESS / BANK_REJECT | BPMN | Разработчик |
+| 8 | Изменяемые данные | UMP DB напрямую не меняет; стадии через Kafka connectors | DOCS/SIGN/PAYMENT/COMPLETED | BPMN | Разработчик |
 | 9 | Скрипт миграции БД | Нет необходимости | — | — | Разработчик |
-| 10 | Заглушки внешних зависимостей | Моки в дочерних процессах. На НТ для async нужно подкладывать Kafka-сообщения (signing/payment) | EQ mock (payment), ЭА mock (finalisation), AC delete mock | Встреча с НТ | Разработчик |
-| 11 | Ожидаемое время отклика замоканных зависимостей | По дочерним процессам | Kafka: ориентир 1800 сообщений/день | Бэкенд | Разработчик |
-| 12 | Сценарий тестирования | См. таблицу ниже | — | Аналитик | Аналитик |
-
-### Пример запуска
-
-| Параметр | Значение | Обяз. |
-|---|---|---|
-| bpmnProcessId | `ump-main-ma-ncins-pa` | Да |
-| businessKey | `3fa85f64-5717-4562-b3fc-2c963f66afa6` | Да |
-| productCode | `NON_CREDIT_INSURANCE` | Да |
-
-### Сценарии НТ
-
-| # | Сценарий | Доля | Шаги / результат |
-|---|---|---|---|
-| 1 | Happy-path E2E | ~95% | prepare → DOCS_COMPLETED → signing → SIGN_COMPLETED → payment → PAYMENT_COMPLETED → finalisation → COMPLETED → `SUCCESS` |
-| 2 | Signing timeout | ~4.75% | нет completion → timer → delete → `BANK_REJECT` |
-| 3 | Payment timeout | малая | нет payment message → timer 5 мин → reject/cleanup |
-| 4 | Main emergency timeout | ~0 | timer 30 мин → delete → `BANK_REJECT` |
-
-### Критерии успешности НТ
-
-| Метрика | Значение | Комментарий |
-|---|---|---|
-| SUCCESS rate | ориентир 99.99% (happy-path) | TBD с инженером НТ |
-| Incident rate | TBD | Встреча с НТ |
-| Timeout rate | ~5% (моделируемая ветка) | Не ошибка |
-| E2E SLA main | TBD | Встреча с НТ |
-
-### Открытые пункты
-
-| # | Пункт | Статус |
-|---|---|---|
-| 1 | Формальный E2E SLA main | TBD |
-| 2 | Финальные критерии приёмки НТ | TBD |
-| 3 | Прогноз ЧПН через 6 месяцев | TBD |
-| 4 | Автоматизация подкладывания Kafka-сообщений | TBD |
+| 10 | Заглушки | Моки в дочерних; на НТ подкладывать SigningDocs / paymentFinished с `correlationKey=businessKey+".NON_CREDIT_INSURANCE"` | Kafka publish | НТ | Разработчик |
+| 11 | Время отклика замоканных зависимостей | Sync несколько сек; async signing на НТ ≤~3 сек; payment почти мгновенно | — | НТ | Разработчик |
+| 12 | Сценарий тестирования | Happy-path ~95%; signing timeout ~4.75% → delete; payment timeout редко; main PT30M аварийный | timeoutMessage=TIMEOUT | Аналитик | Аналитик |

@@ -1,124 +1,33 @@
 # НТ пререквизиты :: Worker ump-finalisation-ncins-pa
 
-**UMP** · 21 июля 2026
+**UMP** · 21 июля 2026 · актуализировано по BPMN PR (NCINS)
 
-## 1. Согласование
+## Ключевые факты BPMN (финал PR)
 
-| Аналитик | Согласование |
+```
+Start → get-application-data (FINALISATION)
+     → ump-finalisation-ncins-pa.create-contract
+     → Parallel Gateway
+          ├─ ea-send-documents.v1  acId=agreementLink  stopInIncident=false
+          ├─ ea-send-documents.v1  acId=policyLink     stopInIncident=false
+          └─ ea-send-documents.v1  acId=contractLink   stopInIncident=false
+     → Join → End
+```
+
+MultiInstance на EA **удалён**. Job create-contract: `ump-finalisation-ncins-pa.create-contract`.
+
+## Пререквизиты 1–12
+
+| # | Значение (кратко) |
 |---|---|
-| TBD | TBD |
-
----
-
-## 2. Минимальная информация для определения необходимости проведения НТ
-
-| # | Пререквизит | Значение | Пример | Где взять | Роль |
-|---|---|---|---|---|---|
-| 1 | Описание алгоритма работы тестируемого метода | `[ump-finalisation-ncins-pa] Финализация заявки` | Start → Get data → Create contract (АБ) → Save docs to ЭА → End | Confluence / BPMN | Разработчик |
-| 2 | SLA по времени отклика | Sync-вызовы | Несколько секунд на каждый sync-вызов (TBD точное число с НТ) | СА | Аналитик |
-| 3 | Частота планируемой нагрузки (ЧПН) | ~85/час среднее, пик ~170/час | 15000/мес × ~95% (дошедшие до финала) | Расчёт | Аналитик |
-| 4 | Прогнозируемая через полгода ЧПН | TBD | — | Аналитик | Аналитик |
-| 5 | ЧПН на вызываемые методы | См. таблицу ниже | — | Аналитик | Аналитик |
-| 6 | Прогнозируемая через полгода ЧПН на зависимости | TBD | — | Аналитик | Аналитик |
-
-### 2.5 ЧПН на зависимости
-
-| Сервис / метод | ЧПН | Комментарий |
-|---|---|---|
-| `GET /applications/{id}` | ~85–170/час | Данные заявки |
-| `POST /v1/ins-contracts` (АБ Страхование Учет) | ~85–170/час | Создание договора |
-| `ump-document-connectors.ea-send-documents.v1` | ~85–170/час | ЭА через AC; **мокается на НТ** |
-
----
-
-## 3. Полная информация для проведения НТ
-
-| # | Пререквизит | Значение | Пример | Где взять | Роль |
-|---|---|---|---|---|---|
-| 6 | Пример кода вызова | См. таблицы request ниже | `businessKey` + `processType=FINALISATION` | Бэкенд | Тестировщик |
-| 7 | Примеры кода ответа | См. таблицы response ниже | SUCCESS / ERROR | Бэкенд | Разработчик |
-| 8 | Изменяемые данные | БД UMP **не изменяется** | Договор — во внешней АБ; документы — в ЭА | Бэкенд | Разработчик |
-| 9 | Скрипт миграции БД | Нет необходимости | — | — | Разработчик |
-| 10 | Заглушки внешних зависимостей | На НТ мокается сохранение в ЭА | В коннектор: `stopInIncident=false` | Бэкенд / Петя | Разработчик |
-| 11 | Ожидаемое время отклика замоканных зависимостей | Sync: несколько секунд | TBD точное значение | НТ | Разработчик |
-| 12 | Сценарий тестирования | См. таблицу ниже | — | Аналитик | Аналитик |
-
-### Зависимости
-
-| # | Зависимость | Вызов | Мок на НТ |
-|---|---|---|---|
-| 1 | АБ Страхование Учет | `POST /v1/ins-contracts` | Нет (нужна интеграция стенда) |
-| 2 | ЭА через AC 1.0 | `ump-document-connectors.ea-send-documents.v1` (`acId`, `stopInIncident=false`) | **Да** |
-
-### Запуск процесса
-
-| Параметр | Значение | Обяз. |
-|---|---|---|
-| businessKey | `550e8400-e29b-41d4-a716-446655440006` | Да |
-| processType | `FINALISATION` (константа) | Да |
-
-### Service Task: Получить данные по заявке
-
-| | Значение |
-|---|---|
-| Request | `{"businessKey": "550e8400-e29b-41d4-a716-446655440006"}` |
-| Response success | выходные данные по маппингу + `getProcessParams=SUCCESS` |
-| Response error | `getProcessParams=ERROR` |
-
-### Service Task: Создать договор — request (пример)
-
-| Поле | Пример |
-|---|---|
-| inn | `14883226767` |
-| email | `romashka@rambler.ru` |
-| contractNumber | `Z6922/888/ABR14880/6` (**не статический**, генерируется) |
-| beginDate / endDate / signDate | `2026-06-25T11:47:13.57Z` |
-| insuranceSum / insurancePremium | `20000.0` |
-| duration | `12` |
-| paymentType | `payment_account` |
-| agreementLink / contractLink | UUID документов |
-| insuranceObjects | массив объектов (см. BPMN/Confluence) |
-| ownerId | `AAAXXX` |
-| phoneNumber | `79996296904` |
-| legalAddress | `г. Пушкино ул. Колотушкина д. 14/88` |
-| sellerId | `U_M13RU` |
-| sellerChannel | `SFA` |
-| programId | `1` |
-
-| Response | Значение |
-|---|---|
-| Success | `result=SUCCESS`, `errorMessage=null` |
-| Error | `result=ERROR`, `errorMessage` = лог ошибки |
-
-### Service Task: Сохранить документы в ЭА
-
-| | Значение |
-|---|---|
-| Request | поля `agreementLink`, `contractLink`, `policyLink` из get-application |
-| Response | необязателен |
-
-### Тестовые данные для повторяемого прогона
-
-| # | Требование | Комментарий |
-|---|---|---|
-| 1 | Разный `contractNumber` на каждую мультизаявку | Генерация: `/v1/ins-contracts/contract-number` |
-| 2 | На стенде int нагенерить список `contractNumber` и отдать НТ | Команда сверяет в своей БД |
-| 3 | Интеграция стенда НТ с контуром договоров | Обязательно |
-
-### Сценарии НТ
-
-| # | Сценарий | Ожидаемый результат |
-|---|---|---|
-| 1 | Success | get data → create contract → mock EA save → SUCCESS |
-| 2 | Ошибка get data | `getProcessParams=ERROR` |
-| 3 | Ошибка create contract | `result=ERROR` + errorMessage |
-| 4 | EA без документов | `stopInIncident=false` — не обязан падать в инцидент |
-
-### Открытые пункты
-
-| # | Пункт | Статус |
-|---|---|---|
-| 1 | Список заранее сгенерированных `contractNumber` для НТ | TBD |
-| 2 | Интеграция стенда НТ с контуром договоров | TBD |
-| 3 | Точный числовой SLA sync-шагов | TBD |
-| 4 | Response status от EA при реальных документах | TBD |
+| 1 | См. цепочку выше |
+| 2 | Sync несколько сек; 3 EA параллельно |
+| 3 | ~85/170 заявок; EA connector ×3 → ~255–510/час на тип |
+| 4–6 | TBD / get + ins-contracts + 3× ea-send |
+| 6 (full) | Уникальный `contractNumber` на прогон; интеграция стенда договоров |
+| 7 | get/create SUCCESS\|ERROR; EA response необязателен |
+| 8 | UMP DB не меняется |
+| 9 | Нет миграции |
+| 10 | Мок 3× EA; АБ живой/стенд |
+| 11 | Несколько сек |
+| 12 | Success / get err / create err / EA без docs без инцидента |

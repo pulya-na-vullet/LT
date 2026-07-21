@@ -1,25 +1,35 @@
-# НТ пререквизиты — некредитное страхование (ncins)
+# НТ пререквизиты — пакет ncins
 
-Пакет документов для специалиста НТ по воркерам UMP (табличный формат по образцу `ump-onboarding-pa`).
+Актуализировано **21 июля 2026** по финальному BPMN из PR (NCINS, commits 1–7) + ответы СА/бэкенд.
 
-| Документ | Процесс |
+## Excel (основной артефакт для НТ)
+
+Скачать zip: [`nt-prerequisites-ncins-xlsx.zip`](../nt-prerequisites-ncins-xlsx.zip)
+
+Папка: [`nt-prerequisites-xlsx/`](../nt-prerequisites-xlsx/)
+
+Структура каждого файла = образец `ump-onboarding-pa`:
+
+1. Согласование  
+2. Минимальная информация (пререквизиты 1–6)  
+3. Полная информация (пререквизиты 6–12)  
+4. BPMN методы (источник) — STATIC/DYNAMIC
+
+| Файл | Процесс |
 |---|---|
-| [01-ump-main-ma-ncins-pa.md](01-ump-main-ma-ncins-pa.md) | Управление процессом мультизаявки |
-| [02-ump-prepare-documents-ncins-pa.md](02-ump-prepare-documents-ncins-pa.md) | Формирование документов |
-| [03-ump-signing-documents-ncins-pa.md](03-ump-signing-documents-ncins-pa.md) | Подписание документов |
-| [04-ump-payment-ncins-pa.md](04-ump-payment-ncins-pa.md) | Оплата страховки |
-| [05-ump-finalisation-ncins-pa.md](05-ump-finalisation-ncins-pa.md) | Финализация заявки |
-| [06-ump-delete-documents-ncins-pa.md](06-ump-delete-documents-ncins-pa.md) | Удаление документов |
+| `... ump-main-ma-ncins-pa.xlsx` | Оркестратор |
+| `... ump-prepare-documents-ncins-pa.xlsx` | Подготовка документов |
+| `... ump-signing-documents-ncins-pa.xlsx` | Подписание (PT25M) |
+| `... ump-payment-ncins-pa.xlsx` | Оплата (PT5M) |
+| `... ump-finalisation-ncins-pa.xlsx` | Финализация (3× parallel EA) |
+| `... ump-delete-documents-ncins-pa.xlsx` | Удаление (multiInstance) |
 
-## Общий профиль нагрузки
+## Ключевые правки по BPMN PR
 
-| Параметр | Значение |
-|---|---|
-| База | 15000 заявок / месяц |
-| Канал | SFA, рабочие часы ЮЛ |
-| Среднее | ~89 заявок/час (21 р.д. × 8 ч) |
-| Пик (×2) | ~180 заявок/час |
-| Timeout-ветки | ~5% (~750/мес, ~4–5/час) |
-| Из timeout: signing | ~95% |
+- Signing/Payment **correlationKey** = `businessKey + "." + "NON_CREDIT_INSURANCE"`
+- Timers: signing **PT25M**, payment **PT5M**, main **PT30M**
+- Finalisation: **3×** `ea-send-documents.v1` (agreement/policy/contract), `stopInIncident=false`
+- Delete: BPMN id `ump-delete-documents-ncins-pa`, `processType=DELETE_DOCS`, multiInstance `documents`
+- Main на timeout: Call Activity delete → BANK_REJECT
 
-Пункты **TBD** — финализация на встрече с НТ / у аналитики.
+Markdown-копии в этой папке — краткие шпаргалки; для заполнения НТ использовать Excel.
